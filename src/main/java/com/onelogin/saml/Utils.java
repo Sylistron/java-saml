@@ -4,7 +4,16 @@ import java.io.File;
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.net.URL;
+import java.security.InvalidKeyException;
+import java.security.KeyFactory;
+import java.security.NoSuchAlgorithmException;
+import java.security.Signature;
+import java.security.SignatureException;
 import java.security.cert.Certificate;
+import java.security.cert.CertificateEncodingException;
+import java.security.interfaces.RSAPrivateKey;
+import java.security.spec.InvalidKeySpecException;
+import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -285,6 +294,23 @@ public class Utils {
 		return res;
 	}
 
+	public static byte[] sign(String algorithm, Certificate certificate, byte[] toSign) throws NoSuchAlgorithmException, InvalidKeySpecException, CertificateEncodingException, InvalidKeyException, SignatureException {
+		KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+        PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(certificate.getEncoded());
+        RSAPrivateKey privateKey = (RSAPrivateKey) keyFactory.generatePrivate(keySpec);
+
+        Signature signature = null;
+        if (algorithm == null || algorithm.equals("rsa-sha256")) {
+        	signature = Signature.getInstance("SHA256withRSA");
+        } else {
+        	// TODO support more algorithms
+        	throw new NoSuchAlgorithmException(algorithm + " not currently supported.");
+        }
+        signature.initSign(privateKey);
+        signature.update(toSign);
+        byte[] signatureBytes = signature.sign();
+        return signatureBytes;
+	}
 
 	/**
 	 * Function to load a String into a Document

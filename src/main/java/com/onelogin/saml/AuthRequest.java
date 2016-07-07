@@ -1,8 +1,5 @@
 package com.onelogin.saml;
 
-import com.onelogin.AccountSettings;
-import com.onelogin.AppSettings;
-
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
@@ -10,7 +7,6 @@ import java.net.URLEncoder;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.TimeZone;
-import java.util.Map;
 import java.util.UUID;
 import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
@@ -20,6 +16,9 @@ import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamWriter;
 
 import org.apache.commons.codec.binary.Base64;
+
+import com.onelogin.AccountSettings;
+import com.onelogin.AppSettings;
 
 public class AuthRequest {
 
@@ -39,8 +38,8 @@ public class AuthRequest {
 		issueInstant = simpleDf.format(new Date());
 	}
 
-	public String getRequest(int format) throws XMLStreamException, IOException {
-		String result = "";
+	public byte[] getRequest(int format) throws XMLStreamException, IOException {
+		byte[] result = null;
 
 		ByteArrayOutputStream baos = new ByteArrayOutputStream();
 
@@ -80,7 +79,7 @@ public class AuthRequest {
 		writer.writeEndElement();
 		writer.flush();
                 
-		result = encodeSAMLRequest(baos.toByteArray());
+		result = baos.toByteArray();
 		return result;
 	}
 
@@ -115,8 +114,27 @@ public class AuthRequest {
 		return ssourl;
 	}
 	
-	public String getSSOurl() throws UnsupportedEncodingException, XMLStreamException, IOException{
-		String ssourl = accountSettings.getIdp_sso_target_url()+"?SAMLRequest=" + URLEncoder.encode(getRequest(base64),"UTF-8");
+	public String getSSOurl() throws UnsupportedEncodingException, XMLStreamException, IOException {
+		
+		byte[] samlRequestBytes = getRequest(base64);
+		
+		String encodedSamlRequest = encodeSAMLRequest(samlRequestBytes);
+		
+		String signedSamlRequest = null;
+		
+		// sign if necessary
+		if (accountSettings.getSpCertificate() != null) {
+			try {
+				byte[] signedSamleRequestBytes = Utils.sign(accountSettings.getIdp_signing_algo(), accountSettings.getSpCert(), samlRequestBytes);
+				signedSamlRequest = encodeSAMLRequest(signedSamleRequestBytes);
+			} catch (Exception e) {
+				//TODO refactor exception handling?
+				e.printStackTrace();
+				throw new UnsupportedEncodingException(e.getMessage());
+			}
+		}
+		
+		String ssourl = accountSettings.getIdp_sso_target_url()+"?SAMLRequest=" + URLEncoder.encode(encodedSamlRequest,"UTF-8") + (signedSamlRequest != null ? "&Signature=" +URLEncoder.encode(signedSamlRequest,"UTF-8") : "");
 		return ssourl;
 	}
 	
