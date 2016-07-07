@@ -30,7 +30,7 @@ public class AccountSettings {
 	public String getSpPrivateKey() {
 		return spPrivateKey;
 	}
-	public void setSpCertificate(String privateKey) {
+	public void setSpPrivateKey(String privateKey) {
 		this.spPrivateKey = privateKey;
 	}
 	public String getIdp_sso_target_url() {
