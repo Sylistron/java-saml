@@ -123,9 +123,9 @@ public class AuthRequest {
 		String signedSamlRequest = null;
 		
 		// sign if necessary
-		if (accountSettings.getSpCertificate() != null) {
+		if (accountSettings.getSpPrivateKey() != null) {
 			try {
-				byte[] signedSamleRequestBytes = Utils.sign(accountSettings.getIdp_signing_algo(), accountSettings.getSpCert(), samlRequestBytes);
+				byte[] signedSamleRequestBytes = Utils.sign(accountSettings.getIdp_signing_algo(), accountSettings.getSpPK(), samlRequestBytes);
 				signedSamlRequest = encodeSAMLRequest(signedSamleRequestBytes);
 			} catch (Exception e) {
 				//TODO refactor exception handling?

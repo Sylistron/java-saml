@@ -294,12 +294,8 @@ public class Utils {
 		return res;
 	}
 
-	public static byte[] sign(String algorithm, Certificate certificate, byte[] toSign) throws NoSuchAlgorithmException, InvalidKeySpecException, CertificateEncodingException, InvalidKeyException, SignatureException {
-		KeyFactory keyFactory = KeyFactory.getInstance("RSA");
-        PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(certificate.getEncoded());
-        RSAPrivateKey privateKey = (RSAPrivateKey) keyFactory.generatePrivate(keySpec);
-
-        Signature signature = null;
+	public static byte[] sign(String algorithm, RSAPrivateKey privateKey, byte[] toSign) throws NoSuchAlgorithmException, InvalidKeySpecException, CertificateEncodingException, InvalidKeyException, SignatureException {
+		Signature signature = null;
         if (algorithm == null || algorithm.equals("rsa-sha256")) {
         	signature = Signature.getInstance("SHA256withRSA");
         } else {

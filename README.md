@@ -1,9 +1,9 @@
 # OneLogin's SAML Java SAML
 
-Updating from 1.0-SNAPSHOT to 1.1.2
+Updating from 1.1.2 to 1.1.3
 ---------------------------------
 
-Version 1.1.2 adds many improvements on security. It is a recommended update for all Java SAML users.
+Version 1.1.3 adds the ability to sign SAML requests using a Base64 encoded DER formatted private key.  Instructions to create this private key follow below.
 
 
 Overview
@@ -70,3 +70,23 @@ The following information needs to be available for the response:
 `response.setDestinationUrl`: The URL of the current host + current view
 
 In OneLogin, for this sample project, you'll want to set the SAML Consumer URL to "http://localhost:8080" and the SAML Audience and SAML Recipient to "http://localhost:8080/consume.jsp"
+
+How to create a Private Key for signing SAML requests
+----------------------------
+
+First, create a private key:
+
+	openssl genrsa -out private.pem 2048
+
+Secondly, convert it to PKCS8 DER format w/o encryption
+
+	openssl pkcs8 -topk8 -inform PEM -in private.pem -outform DER -out private.der -nocrypt
+	
+And last, conver that DER file to Base 64:
+
+	base64 private.der > private.der.b64
+	
+You may now copy that Base 64 encoded string and load it into `AccountSetting`.`sp_private_key` using `loadSpPrivateKey()`.  `AuthRequest` will then use that private key and append a `Signature` paramter to the SSO URL.
+
+
+
