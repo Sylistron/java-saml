@@ -6,8 +6,8 @@ import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.Random;
 import java.util.TimeZone;
-import java.util.UUID;
 import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
 
@@ -32,8 +32,12 @@ public class AuthRequest {
 	public AuthRequest(AppSettings appSettings, AccountSettings accSettings){
 		this.appSettings = appSettings;
 		this.accountSettings = accSettings;
-		id="_"+UUID.randomUUID().toString();
-		SimpleDateFormat simpleDf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'");
+		//id="_"+UUID.randomUUID().toString();
+		
+		Random r = new Random();
+        id = 'a' + Long.toString(Math.abs(r.nextLong()), 20) + Long.toString(Math.abs(r.nextLong()), 19);
+		
+		SimpleDateFormat simpleDf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
 		simpleDf.setTimeZone(TimeZone.getTimeZone("UTC"));
 		issueInstant = simpleDf.format(new Date());
 	}
@@ -45,37 +49,50 @@ public class AuthRequest {
 
 		XMLOutputFactory factory = XMLOutputFactory.newInstance();
 		XMLStreamWriter writer = factory.createXMLStreamWriter(baos);
-
-		writer.writeStartElement("samlp", "AuthnRequest", "urn:oasis:names:tc:SAML:2.0:protocol");
-		writer.writeNamespace("samlp","urn:oasis:names:tc:SAML:2.0:protocol");
+		writer.writeStartDocument();
+		writer.writeStartElement("saml2p", "AuthnRequest", "urn:oasis:names:tc:SAML:2.0:protocol");
+		writer.writeNamespace("saml2p","urn:oasis:names:tc:SAML:2.0:protocol");
 
 		writer.writeAttribute("ID", id);
 		writer.writeAttribute("Version", "2.0");
 		writer.writeAttribute("IssueInstant", this.issueInstant);
 		writer.writeAttribute("ProtocolBinding", "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST");
 		writer.writeAttribute("AssertionConsumerServiceURL", this.appSettings.getAssertionConsumerServiceUrl());
+		
+		// ADFS attributes		
+		if (accountSettings.isAdfs()) {
+			writer.writeAttribute("Destination", this.accountSettings.getIdp_sso_target_url()); 
+			writer.writeAttribute("ForceAuthn", "false"); 
+			writer.writeAttribute("IsPassive", "false");
+		}		
+		// /ADFS attributes
 
-		writer.writeStartElement("saml","Issuer","urn:oasis:names:tc:SAML:2.0:assertion");
-		writer.writeNamespace("saml","urn:oasis:names:tc:SAML:2.0:assertion");
+		writer.writeStartElement("saml2","Issuer","urn:oasis:names:tc:SAML:2.0:assertion");
+		writer.writeNamespace("saml2","urn:oasis:names:tc:SAML:2.0:assertion");
 		writer.writeCharacters(this.appSettings.getIssuer());
 		writer.writeEndElement();
 
-		writer.writeStartElement("samlp", "NameIDPolicy", "urn:oasis:names:tc:SAML:2.0:protocol");
+		// NON-ADFS stuff
+		if (!accountSettings.isAdfs()) {
+			writer.writeStartElement("samlp", "NameIDPolicy", "urn:oasis:names:tc:SAML:2.0:protocol");
 
-		writer.writeAttribute("Format", "urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified");
-		writer.writeAttribute("AllowCreate", "true");
-		writer.writeEndElement();
+			writer.writeAttribute("Format", "urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified");
+			writer.writeAttribute("AllowCreate", "true");
+			writer.writeEndElement();
+			
+			writer.writeStartElement("samlp","RequestedAuthnContext","urn:oasis:names:tc:SAML:2.0:protocol");
 
-		writer.writeStartElement("samlp","RequestedAuthnContext","urn:oasis:names:tc:SAML:2.0:protocol");
+			writer.writeAttribute("Comparison", "exact");
 
-		writer.writeAttribute("Comparison", "exact");
+			writer.writeStartElement("saml","AuthnContextClassRef","urn:oasis:names:tc:SAML:2.0:assertion");
+			writer.writeNamespace("saml", "urn:oasis:names:tc:SAML:2.0:assertion");
+			writer.writeCharacters("urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport");
+			writer.writeEndElement();
 
-		writer.writeStartElement("saml","AuthnContextClassRef","urn:oasis:names:tc:SAML:2.0:assertion");
-		writer.writeNamespace("saml", "urn:oasis:names:tc:SAML:2.0:assertion");
-		writer.writeCharacters("urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport");
-		writer.writeEndElement();
-
-		writer.writeEndElement();
+			writer.writeEndElement();
+		}
+		// /NON-ADFS stuff
+		
 		writer.writeEndElement();
 		writer.flush();
                 
@@ -102,31 +119,44 @@ public class AuthRequest {
 		} catch (Exception e) {
 			throw new RuntimeException(e);
 		}
-	}
+	}	
 	
-	
-	public String getSSOurl(String relayState) throws UnsupportedEncodingException, XMLStreamException, IOException{
-		
-		String ssourl = getSSOurl();
-		if(relayState != null && !relayState.isEmpty()){
-			ssourl = ssourl + "&RelayState=" + relayState;
-		}
-		return ssourl;
-	}
-	
-	public String getSSOurl() throws UnsupportedEncodingException, XMLStreamException, IOException {
+	public String getSSOurl(String relayState) throws UnsupportedEncodingException, XMLStreamException, IOException {
 		
 		byte[] samlRequestBytes = getRequest(base64);
 		
 		String encodedSamlRequest = encodeSAMLRequest(samlRequestBytes);
 		
-		String signedSamlRequest = null;
+		String urlEncodedSamlRequest = URLEncoder.encode(encodedSamlRequest,"UTF-8").trim();
+		
+		String finalSignatureValue = "";
 		
 		// sign if necessary
 		if (accountSettings.getSpPrivateKey() != null) {
 			try {
-				byte[] signedSamleRequestBytes = Utils.sign(accountSettings.getIdp_signing_algo(), accountSettings.getSpPK(), samlRequestBytes);
-				signedSamlRequest = encodeSAMLRequest(signedSamleRequestBytes);
+				// determin our SigAlg
+				String urlEncodedSigAlg = URLEncoder.encode(Utils.getAlgoNS(accountSettings.getIdp_signing_algo()) + accountSettings.getIdp_signing_algo(),"UTF-8");
+				
+				// let's build the query string for signing
+				String strSignature = "SAMLRequest=" + urlEncodedSamlRequest;
+				
+				if (relayState != null && !relayState.isEmpty()) {
+					strSignature += "&RelayState=" + relayState;
+				}
+				
+				// append our SigAlg
+				strSignature += "&SigAlg=" + urlEncodedSigAlg;
+				
+				// sign the query string
+				byte[] signedSamlRequestBytes = Utils.sign(accountSettings.getIdp_signing_algo(), accountSettings.getSpPK(), strSignature);
+				
+				Base64 base64Encoder = new Base64();
+				String encodedSignedSamlRequest = new String(base64Encoder.encode(signedSamlRequestBytes));
+				
+				String urlEncodedSignedSamlRequest = URLEncoder.encode(encodedSignedSamlRequest,"UTF-8");
+				
+				finalSignatureValue = "&SigAlg=" + urlEncodedSigAlg + "&Signature=" + urlEncodedSignedSamlRequest;
+				
 			} catch (Exception e) {
 				//TODO refactor exception handling?
 				e.printStackTrace();
@@ -134,8 +164,17 @@ public class AuthRequest {
 			}
 		}
 		
-		String ssourl = accountSettings.getIdp_sso_target_url()+"?SAMLRequest=" + URLEncoder.encode(encodedSamlRequest,"UTF-8") + (signedSamlRequest != null ? "&Signature=" +URLEncoder.encode(signedSamlRequest,"UTF-8") : "");
+		String ssourl = accountSettings.getIdp_sso_target_url()+"?SAMLRequest=" + urlEncodedSamlRequest + finalSignatureValue;
+		
+		if(relayState != null && !relayState.isEmpty()) {
+			ssourl = ssourl + "&RelayState=" + relayState;
+		}
+		
 		return ssourl;
+	}
+	
+	public String getSSOurl() throws UnsupportedEncodingException, XMLStreamException, IOException{		
+		return getSSOurl(null);
 	}
 	
 }

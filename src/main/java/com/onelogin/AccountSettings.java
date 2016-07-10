@@ -20,6 +20,7 @@ public class AccountSettings {
 	private RSAPrivateKey sp_private_key;
 	private String idp_sso_target_url;
 	private String idp_signing_algo;
+	private boolean isAdfs; //TODO support multiple Idp implementations 
 	
 	public String getCertificate() {
 		return certificate;
@@ -44,6 +45,12 @@ public class AccountSettings {
 	}
 	public void setIdp_signing_algo(String idp_signing_algo) {
 		this.idp_signing_algo = idp_signing_algo;
+	}
+	public boolean isAdfs() {
+		return isAdfs;
+	}
+	public void setAdfs(boolean isAdfs) {
+		this.isAdfs = isAdfs;
 	}
 	/**
 	 * Loads certificate from a base64 encoded string

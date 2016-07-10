@@ -3,9 +3,9 @@ package com.onelogin.saml;
 import java.io.File;
 import java.io.StringReader;
 import java.io.StringWriter;
+import java.io.UnsupportedEncodingException;
 import java.net.URL;
 import java.security.InvalidKeyException;
-import java.security.KeyFactory;
 import java.security.NoSuchAlgorithmException;
 import java.security.Signature;
 import java.security.SignatureException;
@@ -13,7 +13,6 @@ import java.security.cert.Certificate;
 import java.security.cert.CertificateEncodingException;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.spec.InvalidKeySpecException;
-import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -22,6 +21,7 @@ import java.util.Map;
 
 import javax.xml.XMLConstants;
 import javax.xml.crypto.MarshalException;
+import javax.xml.crypto.dsig.Reference;
 import javax.xml.crypto.dsig.XMLSignature;
 import javax.xml.crypto.dsig.XMLSignatureFactory;
 import javax.xml.crypto.dsig.dom.DOMValidateContext;
@@ -272,18 +272,36 @@ public class Utils {
 	 * Validate signature (Message or Assertion).
 	 * 
 	 * @param xml The element we should validate
-	 * @param cert The pubic cert
+	 * @param cert The public cert
 	 * @param fingerprint The fingerprint of the public cert
 	 * @return True if the sign is valid, false otherwise.
 	 */
 	public static boolean validateSign(Node signatureElement, Certificate cert, String ...fingerprint) 
 			throws Exception{
+		
+		log.debug("cert: " + cert.getPublicKey());
+		log.debug("signatureElement: " + signatureElement);
+		
 		boolean res = false;
 		DOMValidateContext ctx = new DOMValidateContext(cert.getPublicKey(), signatureElement);
+		ctx.setProperty("javax.xml.crypto.dsig.cacheReference", Boolean.TRUE);
+		
 		XMLSignatureFactory sigF = XMLSignatureFactory.getInstance("DOM");		
 		try {
 			XMLSignature xmlSignature = sigF.unmarshalXMLSignature(ctx);
 			res = xmlSignature.validate(ctx);
+			
+			log.debug("res: " + res);
+			
+			if (!res) {
+				// Check the validation status of each Reference.
+		        Iterator i = xmlSignature.getSignedInfo().getReferences().iterator();
+		        for (int j=0; i.hasNext(); j++) {
+		            boolean refValid = ((Reference) i.next()).validate(ctx);
+		            log.debug("ref["+j+"] validity status: " + refValid);
+		        }
+			}			
+			
 		} catch (MarshalException e) {
 			log.error("Cannot locate Signature Node " + e.getMessage(), e);
 			throw e;
@@ -294,16 +312,19 @@ public class Utils {
 		return res;
 	}
 
-	public static byte[] sign(String algorithm, RSAPrivateKey privateKey, byte[] toSign) throws NoSuchAlgorithmException, InvalidKeySpecException, CertificateEncodingException, InvalidKeyException, SignatureException {
+	public static byte[] sign(String algorithm, RSAPrivateKey privateKey, String toSign) throws NoSuchAlgorithmException, InvalidKeySpecException, CertificateEncodingException, InvalidKeyException, SignatureException, UnsupportedEncodingException {
 		Signature signature = null;
         if (algorithm == null || algorithm.equals("rsa-sha256")) {
         	signature = Signature.getInstance("SHA256withRSA");
+        } else if (algorithm.equals("rsa-sha1")) {
+        	signature = Signature.getInstance("SHA1withRSA");
+        	
         } else {
         	// TODO support more algorithms
         	throw new NoSuchAlgorithmException(algorithm + " not currently supported.");
         }
         signature.initSign(privateKey);
-        signature.update(toSign);
+        signature.update(toSign.getBytes("UTF-8"));
         byte[] signatureBytes = signature.sign();
         return signatureBytes;
 	}
@@ -352,8 +373,14 @@ public class Utils {
 		}
 	}
 
-
-
+	public static String getAlgoNS(String algo) {
+		if (algo.equals("rsa-sha256")) {
+			return "http://www.w3.org/2001/04/xmldsig-more#";
+		} else if (algo.equals("rsa-sha1")) {
+			return "http://www.w3.org/2000/09/xmldsig#";
+		} 
+		return "";
+	}
 }
 
 

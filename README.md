@@ -71,12 +71,12 @@ The following information needs to be available for the response:
 
 In OneLogin, for this sample project, you'll want to set the SAML Consumer URL to "http://localhost:8080" and the SAML Audience and SAML Recipient to "http://localhost:8080/consume.jsp"
 
-How to create a Private Key for signing SAML requests
+How to create a Self-Signed Certificate and Private Key for signing SAML requests
 ----------------------------
 
-First, create a private key:
+First, create a self-signed certficate and private key:
 
-	openssl genrsa -out private.pem 2048
+	openssl req -new -x509 -sha256 -newkey rsa:2048 -nodes -keyout private.pem -days 7300 -out certificate.pem
 
 Secondly, convert it to PKCS8 DER format w/o encryption
 

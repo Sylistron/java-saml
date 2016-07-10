@@ -113,8 +113,9 @@ public class Response {
 			}
 
 			NodeList signNodes = document.getElementsByTagNameNS(XMLSignature.XMLNS, "Signature");
-			ArrayList<String> signedElements = new ArrayList<String>();
+			ArrayList<String> signedElements = new ArrayList<String>(signNodes.getLength());
 			for (int i = 0; i < signNodes.getLength(); i++) {
+				log.debug("found Signature: " + signNodes.item(i).getTextContent());
 				signedElements.add(signNodes.item(i).getParentNode().getLocalName());
 			}
 			if (!signedElements.isEmpty()) {
